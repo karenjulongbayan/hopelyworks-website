@@ -1,7 +1,18 @@
-// HopelyWorks - lead intake receiver
+// HopelyWorks - lead intake receiver (hardened)
 // Paste into Extensions > Apps Script on your Google Sheet.
 // Deploy as Web app (Execute as: Me, Who has access: Anyone).
 // After ANY edit: Deploy > Manage deployments > pencil > Version: New version > Deploy
+//
+// SECURITY NOTES
+// This endpoint is public by necessity - a static site has no server to hide it
+// behind, so the /exec URL is visible in the page source and anyone can POST to it.
+// Because Apps Script web apps cannot read request headers, an Origin check is not
+// possible here. Abuse is contained with four server-side layers instead:
+//   1. honeypot      - silently drops naive spam bots
+//   2. Turnstile     - blocks scripted POSTs that never loaded the page
+//   3. rate limits   - per-sender and site-wide caps
+//   4. quota reserve - stops a flood from burning the daily Gmail send limit
+// Layers 2-4 are what keep the auto-reply from being used as a spam relay.
 
 var NOTIFY_EMAIL = 'hopelyworks@gmail.com';
 
@@ -12,6 +23,32 @@ var BOOKING_URL = 'https://hopelyworks.com/#contact';
 
 // Send an instant confirmation to the person who filled the form
 var SEND_AUTOREPLY = true;
+
+// -- Abuse limits ----------------------------------------------------------
+var RATE_WINDOW_SEC   = 600;  // per-sender window: 10 minutes
+var RATE_MAX_PER_USER = 3;    // max submissions per email address per window
+var GLOBAL_WINDOW_SEC = 3600; // site-wide window: 1 hour
+var GLOBAL_MAX        = 40;   // max submissions site-wide per hour
+var QUOTA_RESERVE     = 20;   // stop auto-replies when daily send quota drops here
+var QUOTA_HARD_FLOOR  = 5;    // stop all mail (still records the row) below this
+var MAX_BODY_BYTES    = 20000;
+
+// -- Field length caps (values are truncated, never rejected) ---------------
+var MAX_LEN = {
+  name: 120, email: 254, needs: 300, business: 5000,
+  timing: 60, budget: 60, site: 500, source: 120
+};
+
+// Set TURNSTILE_SECRET_KEY in Apps Script:
+//   Project Settings > Script Properties > Add script property
+// Until it is set, verification is skipped so the form keeps working.
+function turnstileSecret() {
+  try {
+    return PropertiesService.getScriptProperties().getProperty('TURNSTILE_SECRET_KEY') || '';
+  } catch (e) {
+    return '';
+  }
+}
 
 var HEADERS = [
   'Timestamp',
@@ -28,7 +65,45 @@ var HEADERS = [
 
 function doPost(e) {
   try {
-    var data = JSON.parse(e.postData.contents);
+    if (!e || !e.postData || !e.postData.contents) {
+      return jsonOut({ result: 'error', message: 'Bad request' });
+    }
+    // Reject oversized bodies before parsing them.
+    if (e.postData.contents.length > MAX_BODY_BYTES) {
+      return jsonOut({ result: 'error', message: 'Payload too large' });
+    }
+
+    var raw;
+    try {
+      raw = JSON.parse(e.postData.contents);
+    } catch (parseErr) {
+      return jsonOut({ result: 'error', message: 'Bad request' });
+    }
+    if (!raw || typeof raw !== 'object') {
+      return jsonOut({ result: 'error', message: 'Bad request' });
+    }
+
+    // 1. Honeypot - a hidden field no human ever fills. Pretend success.
+    if (raw.company && String(raw.company).trim()) {
+      return jsonOut({ result: 'success' });
+    }
+
+    // 2. Turnstile - proves the POST came from a browser that loaded the page.
+    if (!verifyTurnstile(raw.turnstileToken)) {
+      return jsonOut({ result: 'error', message: 'Verification failed' });
+    }
+
+    // 3. Validate and clamp every field before it touches the sheet or an email.
+    var data = sanitize(raw);
+    if (!data.email) {
+      return jsonOut({ result: 'error', message: 'A valid email is required' });
+    }
+
+    // 4. Rate limit per sender and site-wide.
+    if (!checkRateLimit(data.email)) {
+      return jsonOut({ result: 'error', message: 'Too many requests. Please try again later.' });
+    }
+
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
 
     if (sheet.getLastRow() === 0) {
@@ -49,14 +124,14 @@ function doPost(e) {
 
     sheet.appendRow([
       new Date(),
-      data.name || '',
-      data.email || '',
-      data.needs || '',
-      data.business || '',
-      data.timing || '',
-      data.budget || '',
-      data.site || '',
-      data.source || 'hopelyworks.com',
+      data.name,
+      data.email,
+      data.needs,
+      data.business,
+      data.timing,
+      data.budget,
+      data.site,
+      data.source,
       'New'
     ]);
 
@@ -64,19 +139,181 @@ function doPost(e) {
     sheet.getRange(r, 1, 1, HEADERS.length).setVerticalAlignment('top');
     sheet.getRange(r, 5).setWrap(true);
 
-    if (NOTIFY_EMAIL) {
+    // 5. Send mail only while there is comfortable quota left. The lead is
+    //    already saved above, so a flood costs notifications, never data.
+    var quota = remainingQuota();
+
+    if (NOTIFY_EMAIL && quota > QUOTA_HARD_FLOOR) {
       sendNotification(data, r);
     }
 
-    if (SEND_AUTOREPLY && data.email) {
+    if (SEND_AUTOREPLY && data.email && quota > QUOTA_RESERVE) {
       sendAutoReply(data);
     }
 
     return jsonOut({ result: 'success', row: r });
   } catch (err) {
-    return jsonOut({ result: 'error', message: String(err) });
+    // Log the detail for the owner; return nothing useful to the caller.
+    console.error('doPost failed: ' + err);
+    return jsonOut({ result: 'error', message: 'Something went wrong' });
   }
 }
+
+// -- Validation ------------------------------------------------------------
+
+// Drop C0 control characters and DEL, keeping tab / newline / carriage return.
+// Written as a loop rather than a regex literal so this file stays plain ASCII
+// and survives copy-paste into the Apps Script editor.
+function stripControl(s) {
+  var out = '';
+  for (var i = 0; i < s.length; i++) {
+    var c = s.charCodeAt(i);
+    if (c === 9 || c === 10 || c === 13) { out += s.charAt(i); continue; }
+    if (c < 32 || c === 127) continue;
+    out += s.charAt(i);
+  }
+  return out;
+}
+
+function clamp(value, max) {
+  if (value === null || value === undefined) return '';
+  var s = stripControl(String(value));
+  return s.length > max ? s.substring(0, max) : s;
+}
+
+function validEmail(s) {
+  if (!s) return '';
+  var v = String(s).trim();
+  if (v.length > MAX_LEN.email) return '';
+  // Deliberately strict: no whitespace, no commas/semicolons/brackets, one @.
+  return /^[^\s@,;<>"']+@[^\s@,;<>"']+\.[^\s@,;<>"']+$/.test(v) ? v : '';
+}
+
+function sanitize(raw) {
+  return {
+    name:     clamp(raw.name, MAX_LEN.name).trim(),
+    email:    validEmail(raw.email),
+    needs:    clamp(raw.needs, MAX_LEN.needs).trim(),
+    business: clamp(raw.business, MAX_LEN.business).trim(),
+    timing:   clamp(raw.timing, MAX_LEN.timing).trim(),
+    budget:   clamp(raw.budget, MAX_LEN.budget).trim(),
+    site:     clamp(raw.site, MAX_LEN.site).trim(),
+    source:   clamp(raw.source, MAX_LEN.source).trim() || 'hopelyworks.com'
+  };
+}
+
+// -- Anti-abuse ------------------------------------------------------------
+
+function verifyTurnstile(token) {
+  var secret = turnstileSecret();
+  if (!secret) return true; // not configured yet - fail open so the form works
+
+  try {
+    var res = UrlFetchApp.fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'post',
+      payload: { secret: secret, response: token || '' },
+      muteHttpExceptions: true
+    });
+    var body = JSON.parse(res.getContentText() || '{}');
+    return body.success === true;
+  } catch (err) {
+    console.error('Turnstile verify failed: ' + err);
+    return false; // configured but unreachable - fail closed
+  }
+}
+
+// Returns true if the submission is allowed through.
+function checkRateLimit(email) {
+  var cache;
+  try {
+    cache = CacheService.getScriptCache();
+  } catch (e) {
+    return true; // cache unavailable - do not lose the lead
+  }
+
+  var lock = LockService.getScriptLock();
+  var haveLock = false;
+  try {
+    haveLock = lock.tryLock(5000);
+  } catch (e) {
+    haveLock = false;
+  }
+  if (!haveLock) {
+    // Contended. Let it through rather than drop a real enquiry; the mail
+    // quota reserve still bounds the damage.
+    return true;
+  }
+
+  try {
+    var key = 'rl_' + md5(email.toLowerCase());
+    var mine = parseInt(cache.get(key) || '0', 10);
+    if (mine >= RATE_MAX_PER_USER) return false;
+
+    var all = parseInt(cache.get('rl_global') || '0', 10);
+    if (all >= GLOBAL_MAX) return false;
+
+    cache.put(key, String(mine + 1), RATE_WINDOW_SEC);
+    cache.put('rl_global', String(all + 1), GLOBAL_WINDOW_SEC);
+    return true;
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
+}
+
+function md5(s) {
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, s);
+  var out = '';
+  for (var i = 0; i < bytes.length; i++) {
+    var b = bytes[i] < 0 ? bytes[i] + 256 : bytes[i];
+    out += (b < 16 ? '0' : '') + b.toString(16);
+  }
+  return out;
+}
+
+function remainingQuota() {
+  try {
+    return MailApp.getRemainingDailyQuota();
+  } catch (e) {
+    return 0;
+  }
+}
+
+// -- Escaping --------------------------------------------------------------
+
+function escapeHtml(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// For values placed inside an href="..." attribute.
+function escapeAttr(s) {
+  return escapeHtml(s);
+}
+
+// Only ever emit http(s) links. Anything else is rendered as plain text so a
+// javascript: or data: URL can never become a clickable link in the email.
+function safeUrl(url) {
+  if (!url) return '';
+  var v = String(url).trim();
+  if (/^https?:\/\//i.test(v)) return v;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(v)) return ''; // some other scheme - refuse
+  return 'https://' + v;
+}
+
+function linkify(site) {
+  if (!site) return '';
+  var href = safeUrl(site);
+  if (!href) return escapeHtml(site); // unsafe scheme - show it, do not link it
+  return '<a href="' + escapeAttr(href) + '" style="color:#B8935A;text-decoration:none">' +
+    escapeHtml(site) + '</a>';
+}
+
+// -- Email templates -------------------------------------------------------
 
 function sendNotification(data, rowNum) {
   var name = data.name || 'Someone';
@@ -88,7 +325,8 @@ function sendNotification(data, rowNum) {
   var hot = (timing === 'ASAP') || (data.budget === '$3k+');
   var flag = hot ? 'PRIORITY' : 'New enquiry';
 
-  var subject = flag + ': ' + name + (needs ? ' - ' + needs : '');
+  // Strip newlines so a crafted name cannot inject extra mail headers.
+  var subject = (flag + ': ' + name + (needs ? ' - ' + needs : '')).replace(/[\r\n]+/g, ' ');
 
   var sheetUrl = SpreadsheetApp.getActiveSpreadsheet().getUrl();
   var replyBody = 'Hi ' + first + ',%0D%0A%0D%0A' +
@@ -97,7 +335,7 @@ function sendNotification(data, rowNum) {
     '%0D%0A%0D%0A' +
     'Would you be free for a short call this week? Happy to work around your timezone.%0D%0A%0D%0A' +
     'Warm regards,%0D%0AKaren%0D%0AHopelyWorks%0D%0Ahopelyworks.com';
-  var replyLink = 'mailto:' + (data.email || '') +
+  var replyLink = 'mailto:' + encodeURIComponent(data.email || '') +
     '?subject=' + encodeURIComponent('Re: your enquiry - HopelyWorks') +
     '&body=' + replyBody;
 
@@ -137,20 +375,20 @@ function sendNotification(data, rowNum) {
       // Facts grid
       '<div style="padding:24px 32px 8px 32px">' +
         '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">' +
-          factRow('Timeline', timing) +
-          factRow('Budget', data.budget) +
+          factRow('Timeline', escapeHtml(timing)) +
+          factRow('Budget', escapeHtml(data.budget)) +
           factRow('Website / social', linkify(data.site)) +
-          factRow('Source', data.source || 'hopelyworks.com') +
+          factRow('Source', escapeHtml(data.source || 'hopelyworks.com')) +
           factRow('Received', Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'MMM d, yyyy - h:mm a')) +
         '</table>' +
       '</div>' +
 
       // Actions
       '<div style="padding:12px 32px 30px 32px">' +
-        '<a href="' + replyLink + '" ' +
+        '<a href="' + escapeAttr(replyLink) + '" ' +
           'style="display:inline-block;background:#22352F;color:#F8F5F0;text-decoration:none;' +
           'padding:14px 26px;border-radius:999px;font-size:14px;font-weight:bold">Reply to ' + escapeHtml(first) + '</a>' +
-        '<a href="' + sheetUrl + '" ' +
+        '<a href="' + escapeAttr(sheetUrl) + '" ' +
           'style="display:inline-block;margin-left:10px;color:#22352F;text-decoration:none;' +
           'padding:14px 22px;border:1px solid #E3DDD2;border-radius:999px;font-size:14px">Open sheet (row ' + rowNum + ')</a>' +
       '</div>' +
@@ -199,33 +437,19 @@ function chips(needsString) {
   return out;
 }
 
+// NOTE: `value` is inserted as HTML. Callers must pass already-escaped text, or
+// markup they built themselves and know to be safe (see linkify).
 function factRow(label, value) {
   var v = value ? value : '-';
   return '<tr>' +
     '<td style="padding:11px 0;border-bottom:1px solid #EFEAE2;color:#8A8880;font-size:13px;width:40%">' +
-      label +
+      escapeHtml(label) +
     '</td>' +
     '<td style="padding:11px 0;border-bottom:1px solid #EFEAE2;color:#2B2B2B;font-size:14px;font-weight:bold">' +
       v +
     '</td>' +
   '</tr>';
 }
-
-function linkify(site) {
-  if (!site) return '';
-  var href = site.indexOf('http') === 0 ? site : 'https://' + site;
-  return '<a href="' + href + '" style="color:#B8935A;text-decoration:none">' + escapeHtml(site) + '</a>';
-}
-
-function escapeHtml(s) {
-  if (!s) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 
 function sendAutoReply(data) {
   var name = data.name || '';
@@ -280,7 +504,7 @@ function sendAutoReply(data) {
 
         // CTA
         '<div style="text-align:center">' +
-          '<a href="' + BOOKING_URL + '" ' +
+          '<a href="' + escapeAttr(BOOKING_URL) + '" ' +
             'style="display:inline-block;background:#22352F;color:#F8F5F0;text-decoration:none;' +
             'padding:15px 34px;border-radius:999px;font-size:14px;font-weight:bold">' +
             'Book a discovery call' +
@@ -329,7 +553,7 @@ function sendAutoReply(data) {
 
   MailApp.sendEmail({
     to: data.email,
-    subject: 'We have your enquiry, ' + first + ' - HopelyWorks',
+    subject: ('We have your enquiry, ' + first + ' - HopelyWorks').replace(/[\r\n]+/g, ' '),
     body: plain,
     htmlBody: html,
     replyTo: NOTIFY_EMAIL,
@@ -352,13 +576,14 @@ function jsonOut(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// Minimal response - does not advertise what this endpoint is or who owns it.
 function doGet() {
-  return jsonOut({ status: 'HopelyWorks lead endpoint is live' });
+  return jsonOut({ ok: true });
 }
 
 // Run this once from the editor to send yourself a sample email
 function testEmail() {
-  var sample = {
+  var sample = sanitize({
     name: 'Jane Santos',
     email: 'jane@brightsmiledental.com',
     needs: 'Website Design, Business Automation',
@@ -367,7 +592,7 @@ function testEmail() {
     budget: '$3k+',
     site: 'brightsmiledental.com',
     source: 'hopelyworks.com'
-  };
+  });
   sendNotification(sample, 2);
   // preview the visitor auto-reply in your own inbox
   sample.email = NOTIFY_EMAIL;
