@@ -49,9 +49,21 @@ The form in `site/index.html` posts to a Google Apps Script endpoint.
 2. Paste `automation/google-sheets-script.gs`, save
 3. Deploy → New deployment → Web app (Execute as: Me · Access: Anyone)
 4. Copy the `/exec` URL into the `SHEET_URL` constant in `site/index.html`
+5. *(optional, recommended)* Turn on bot protection — see [SECURITY.md](SECURITY.md)
+
+After **any** edit to the Apps Script, redeploy it as a **new version**
+(Deploy → Manage deployments → pencil → Version: New version), or the old one
+keeps serving and your change appears to do nothing.
 
 Each submission appends a row, emails a formatted lead card, and sends the
 enquirer a branded confirmation with a booking CTA.
+
+## Security
+
+The lead endpoint is protected by a honeypot, rate limits and a daily-send quota
+reserve; the site sends a full set of security headers and a report-only CSP.
+Optional Cloudflare Turnstile support is wired up and dormant until you add the
+keys. Setup steps, current limits and known gaps: **[SECURITY.md](SECURITY.md)**.
 
 ## Brand
 
