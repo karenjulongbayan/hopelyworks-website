@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>What does your business need help with? | HopelyWorks</title>
+<meta name="description" content="Answer 5 quick questions and get a personalised recommendation for your business — plus a clear quote within one business day." />
+<meta name="robots" content="noindex" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config={theme:{extend:{
+ colors:{forest:{DEFAULT:"#22352F",deep:"#182620"},bronze:{DEFAULT:"#B8935A",soft:"#CFB68C",wash:"#F1E9DC"},
+ ivory:{DEFAULT:"#F8F5F0",raised:"#FFFFFF",deep:"#EFEAE2"},ink:{DEFAULT:"#2B2B2B",soft:"#5C5C58",faint:"#8A8880"},line:"#E3DDD2"},
+ fontFamily:{display:['"Cormorant Garamond"',"Georgia","serif"],sans:['"Manrope"',"system-ui","sans-serif"]}}}};
+</script>
+<style>
+  html,body{height:100%}
+  ::selection{background:#F1E9DC;color:#22352F}
+  :focus-visible{outline:2px solid #B8935A;outline-offset:3px}
+  .eyebrow{font-size:.7rem;letter-spacing:.24em;text-transform:uppercase;font-weight:600}
+  .q{font-size:clamp(1.9rem,4.2vw,3.1rem);line-height:1.1}
+
+  /* Step transitions */
+  .step{display:none}
+  .step.active{display:block;animation:in .55s cubic-bezier(.22,1,.36,1) both}
+  @keyframes in{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+
+  /* Option cards */
+  .opt{position:relative;width:100%;text-align:left;border:1px solid #E3DDD2;background:#fff;border-radius:1rem;
+       padding:1.15rem 1.35rem;transition:all .35s cubic-bezier(.22,1,.36,1);cursor:pointer}
+  .opt:hover{border-color:#CFB68C;transform:translateY(-2px);box-shadow:0 12px 28px -14px rgba(34,53,47,.28)}
+  .opt.on{border-color:#22352F;background:#22352F}
+  .opt.on .opt-t{color:#F8F5F0}.opt.on .opt-s{color:rgba(248,245,240,.7)}
+  .opt.on .tick{opacity:1;transform:scale(1)}
+  .opt-t{font-family:'Cormorant Garamond',serif;font-size:1.45rem;color:#22352F;line-height:1.2}
+  .opt-s{font-size:.82rem;color:#5C5C58;margin-top:.15rem}
+  .tick{position:absolute;top:1.15rem;right:1.2rem;opacity:0;transform:scale(.6);transition:all .3s cubic-bezier(.22,1,.36,1);color:#CFB68C}
+
+  .field{width:100%;border:1px solid #E3DDD2;background:#fff;border-radius:.75rem;padding:.85rem 1rem;font-size:.95rem;transition:all .3s}
+  .field::placeholder{color:#8A8880}
+  .field:focus{outline:none;border-color:#B8935A;box-shadow:0 0 0 3px rgba(184,147,90,.18)}
+  .btn{transition:all .3s cubic-bezier(.22,1,.36,1)}
+  .btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 14px 30px -12px rgba(34,53,47,.35)}
+  .btn:disabled{opacity:.35;cursor:not-allowed}
+  #bar{transition:width .6s cubic-bezier(.22,1,.36,1)}
+  @media (prefers-reduced-motion:reduce){.step.active{animation:none}.opt,.btn{transition:none}}
+</style>
+</head>
+<body class="bg-ivory font-sans text-ink antialiased">
+
+<!-- Ambient brand geometry -->
+<div class="pointer-events-none fixed -right-40 -top-40 h-[32rem] w-[32rem] rounded-full border border-bronze/20"></div>
+<div class="pointer-events-none fixed -bottom-48 -left-40 h-[34rem] w-[34rem] rounded-full border border-forest/[.07]"></div>
+
+<!-- Header: logo + progress only -->
+<header class="fixed inset-x-0 top-0 z-40 bg-ivory/85 backdrop-blur-md">
+  <div class="mx-auto flex h-16 w-full max-w-2xl items-center justify-between px-5">
+    <span class="flex items-baseline gap-1.5">
+      <span class="font-display text-xl font-semibold tracking-wide text-forest">Hopely</span>
+      <span class="h-4 w-px self-center bg-bronze"></span>
+      <span class="font-display text-xl font-medium tracking-wide text-bronze">Works</span>
+    </span>
+    <span id="counter" class="text-xs text-ink-faint">Step 1 of 5</span>
+  </div>
+  <div class="h-[2px] w-full bg-line">
+    <div id="bar" class="h-full bg-bronze" style="width:8%"></div>
+  </div>
+</header>
+
+<main class="mx-auto flex min-h-screen w-full max-w-2xl flex-col justify-center px-5 pb-28 pt-28">
+
+  <!-- ═════ STEP 0 — Intro ═════ -->
+  <section class="step active" data-step="0">
+    <div class="flex items-center gap-3">
+      <span class="h-px w-8 bg-bronze"></span>
+      <p class="eyebrow text-bronze">2 minutes · No obligation</p>
+    </div>
+    <h1 class="q mt-5 font-display font-medium text-forest">
+      What does your business need help with?
+    </h1>
+    <p class="mt-5 text-lg leading-relaxed text-ink-soft">
+      Answer five short questions and we'll tell you exactly what we'd recommend —
+      and roughly what it costs. Even if you don't hire us, you'll leave with a clear plan.
+    </p>
+    <button class="btn mt-9 w-full rounded-full bg-forest px-8 py-4 text-sm font-semibold tracking-wide text-ivory sm:w-auto" onclick="go(1)">
+      Let's begin →
+    </button>
+    <p class="mt-6 text-xs text-ink-faint">Trusted by businesses in the US, Australia &amp; Europe</p>
+  </section>
+
+  <!-- ═════ STEP 1 — Need (multi) ═════ -->
+  <section class="step" data-step="1">
+    <p class="eyebrow text-bronze">Question 1 of 5</p>
+    <h2 class="q mt-4 font-display font-medium text-forest">Where do you need help?</h2>
+    <p class="mt-3 text-sm text-ink-soft">Choose as many as apply.</p>
+    <div class="mt-7 space-y-3" data-multi="need">
+      <button class="opt" data-v="website"><span class="opt-t">I need a website</span><span class="opt-s block">New site, or replacing one that's letting you down</span><span class="tick">✓</span></button>
+      <button class="opt" data-v="design"><span class="opt-t">My brand looks inconsistent</span><span class="opt-s block">Social graphics, decks, documents that don't match</span><span class="tick">✓</span></button>
+      <button class="opt" data-v="leads"><span class="opt-t">I need more leads</span><span class="opt-s block">Not sure who to reach out to, or how</span><span class="tick">✓</span></button>
+      <button class="opt" data-v="automation"><span class="opt-t">I'm drowning in repetitive work</span><span class="opt-s block">Follow-ups, bookings, and admin eating your week</span><span class="tick">✓</span></button>
+      <button class="opt" data-v="setup"><span class="opt-t">I'm just getting started</span><span class="opt-s block">Email, domain, booking — the basics done right</span><span class="tick">✓</span></button>
+    </div>
+    <div class="mt-8 flex items-center gap-4">
+      <button class="text-sm text-ink-faint hover:text-forest" onclick="go(0)">← Back</button>
+      <button class="btn ml-auto rounded-full bg-forest px-8 py-3.5 text-sm font-semibold text-ivory" data-next="1" disabled onclick="go(2)">Continue</button>
+    </div>
+  </section>
+
+  <!-- ═════ STEP 2 — Stage ═════ -->
+  <section class="step" data-step="2">
+    <p class="eyebrow text-bronze">Question 2 of 5</p>
+    <h2 class="q mt-4 font-display font-medium text-forest">Where is your business today?</h2>
+    <div class="mt-7 space-y-3" data-single="stage">
+      <button class="opt" data-v="idea"><span class="opt-t">Just starting out</span><span class="opt-s block">Not launched yet, or only weeks in</span><span class="tick">✓</span></button>
+      <button class="opt" data-v="running"><span class="opt-t">Up and running</span><span class="opt-s block">Getting customers, but things feel scattered</span><span class="tick">✓</span></button>
+      <button class="opt" data-v="growing"><span class="opt-t">Growing fast</span><span class="opt-s block">More work than hours — systems can't keep up</span><span class="tick">✓</span></button>
+      <button class="opt" data-v="established"><span class="opt-t">Established, needs a refresh</span><span class="opt-s block">Solid business, dated presence</span><span class="tick">✓</span></button>
+    </div>
+    <div class="mt-8 flex items-center gap-4">
+      <button class="text-sm text-ink-faint hover:text-forest" onclick="go(1)">← Back</button>
+    </div>
+  </section>
+
+  <!-- ═════ STEP 3 — Pain ═════ -->
+  <section class="step" data-step="3">
+    <p class="eyebrow text-bronze">Question 3 of 5</p>
+    <h2 class="q mt-4 font-display font-medium text-forest">What's costing you most right now?</h2>
+    <div class="mt-7 space-y-3" data-single="pain">
+      <button class="opt" data-v="trust"><span class="opt-t">People don't take us seriously yet</span><span class="opt-s block">Prospects hesitate before they even talk to you</span><span class="tick">✓</span></button>
+      <button class="opt" data-v="time"><span class="opt-t">I have no time</span><span class="opt-s block">Admin and follow-ups swallow the week</span><span class="tick">✓</span></button>
+      <button class="opt" data-v="pipeline"><span class="opt-t">Not enough enquiries</span><span class="opt-s block">Quiet inbox, unpredictable months</span><span class="tick">✓</span></button>
+      <button class="opt" data-v="chaos"><span class="opt-t">Everything lives in my head</span><span class="opt-s block">Nothing documented, nothing delegable</span><span class="tick">✓</span></button>
+    </div>
+    <div class="mt-8"><button class="text-sm text-ink-faint hover:text-forest" onclick="go(2)">← Back</button></div>
+  </section>
+
+  <!-- ═════ STEP 4 — Timeline ═════ -->
+  <section class="step" data-step="4">
+    <p class="eyebrow text-bronze">Question 4 of 5</p>
+    <h2 class="q mt-4 font-display font-medium text-forest">When would you like this handled?</h2>
+    <div class="mt-7 space-y-3" data-single="when">
+      <button class="opt" data-v="asap"><span class="opt-t">As soon as possible</span><span class="opt-s block">It's holding the business back right now</span><span class="tick">✓</span></button>
+      <button class="opt" data-v="month"><span class="opt-t">Within a month or two</span><span class="opt-s block">Planning ahead, ready to move</span><span class="tick">✓</span></button>
+      <button class="opt" data-v="exploring"><span class="opt-t">Just exploring for now</span><span class="opt-s block">Gathering options and prices</span><span class="tick">✓</span></button>
+    </div>
+    <div class="mt-8"><button class="text-sm text-ink-faint hover:text-forest" onclick="go(3)">← Back</button></div>
+  </section>
+
+  <!-- ═════ STEP 5 — Contact ═════ -->
+  <section class="step" data-step="5">
+    <p class="eyebrow text-bronze">Last step</p>
+    <h2 class="q mt-4 font-display font-medium text-forest">Where should we send your recommendation?</h2>
+    <p class="mt-3 text-sm text-ink-soft">You'll see it on the next screen too — this is so we can follow up with a proper quote.</p>
+    <div class="mt-7 space-y-4">
+      <div>
+        <label for="f-name" class="mb-1.5 block text-sm font-medium text-forest">Your name</label>
+        <input id="f-name" class="field" placeholder="Jane Santos" />
+        <p id="e-name" class="mt-1.5 hidden text-xs text-bronze"></p>
+      </div>
+      <div>
+        <label for="f-email" class="mb-1.5 block text-sm font-medium text-forest">Email</label>
+        <input id="f-email" type="email" class="field" placeholder="you@yourbusiness.com" />
+        <p id="e-email" class="mt-1.5 hidden text-xs text-bronze"></p>
+      </div>
+      <div>
+        <label for="f-biz" class="mb-1.5 block text-sm font-medium text-forest">What does your business do? <span class="font-normal text-ink-faint">(optional)</span></label>
+        <input id="f-biz" class="field" placeholder="Dental clinic, coaching, staffing agency…" />
+      </div>
+    </div>
+    <button id="finish" class="btn mt-8 w-full rounded-full bg-forest px-8 py-4 text-sm font-semibold tracking-wide text-ivory">
+      Show my recommendation
+    </button>
+    <p class="mt-3 text-center text-xs text-ink-faint">No spam. No sales calls. One honest reply.</p>
+    <div class="mt-6"><button class="text-sm text-ink-faint hover:text-forest" onclick="go(4)">← Back</button></div>
+  </section>
+
+  <!-- ═════ RESULT ═════ -->
+  <section class="step" data-step="6">
+    <div class="flex items-center gap-3">
+      <span class="h-px w-8 bg-bronze"></span>
+      <p class="eyebrow text-bronze">Your recommendation</p>
+    </div>
+    <h2 id="r-title" class="q mt-5 font-display font-medium text-forest"></h2>
+    <p id="r-lead" class="mt-5 text-lg leading-relaxed text-ink-soft"></p>
+
+    <div class="mt-8 rounded-[1.25rem] border border-line bg-ivory-raised p-6 md:p-8">
+      <p class="eyebrow text-bronze">What we'd start with</p>
+      <ul id="r-list" class="mt-4 space-y-3"></ul>
+      <div class="mt-6 border-t border-line pt-5">
+        <p class="text-sm text-ink-soft">Typical starting investment</p>
+        <p id="r-price" class="mt-1 font-display text-3xl text-forest"></p>
+        <p id="r-time" class="mt-1 text-xs text-ink-faint"></p>
+      </div>
+    </div>
+
+    <div class="mt-8 rounded-[1.25rem] bg-forest p-6 text-center md:p-8">
+      <p class="font-display text-2xl text-ivory">We've emailed this to you.</p>
+      <p class="mx-auto mt-2 max-w-sm text-sm text-ivory/70">
+        A real reply with a precise quote follows within one business day —
+        written by a person, not a template.
+      </p>
+      <a href="https://hopelyworks.com" class="btn mt-6 inline-flex rounded-full bg-bronze px-8 py-3.5 text-sm font-semibold text-forest-deep hover:bg-bronze-soft">
+        See our work while you wait
+      </a>
+    </div>
+
+    <p class="mt-8 text-center text-xs text-ink-faint">hopelyworks.com · hopelyworks@gmail.com</p>
+  </section>
+</main>
+
+<script>
+const answers = { need: [], stage: '', pain: '', when: '', name: '', email: '', business: '' };
+let current = 0;
+const TOTAL = 5;
+
+function go(n){
+  document.querySelectorAll('.step').forEach(s=>s.classList.remove('active'));
+  document.querySelector(`.step[data-step="${n}"]`).classList.add('active');
+  current = n;
+  const pct = n === 0 ? 8 : Math.min(100, Math.round((n / TOTAL) * 100));
+  document.getElementById('bar').style.width = pct + '%';
+  const c = document.getElementById('counter');
+  c.textContent = n === 0 ? 'Ready when you are' : (n > TOTAL ? 'Complete' : `Step ${n} of ${TOTAL}`);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Multi-select (step 1)
+document.querySelectorAll('[data-multi] .opt').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    btn.classList.toggle('on');
+    const key = btn.closest('[data-multi]').dataset.multi;
+    answers[key] = [...document.querySelectorAll('[data-multi] .opt.on')].map(b=>b.dataset.v);
+    document.querySelector('[data-next="1"]').disabled = answers[key].length === 0;
+  });
+});
+
+// Single-select — auto-advance
+document.querySelectorAll('[data-single]').forEach(group=>{
+  const key = group.dataset.single;
+  group.querySelectorAll('.opt').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      group.querySelectorAll('.opt').forEach(b=>b.classList.remove('on'));
+      btn.classList.add('on');
+      answers[key] = btn.dataset.v;
+      setTimeout(()=>go(current+1), 320);
+    });
+  });
+});
+
+// Recommendation engine
+function recommend(){
+  const n = answers.need, pain = answers.pain, stage = answers.stage;
+  const has = k => n.includes(k);
+  let title, lead, list, price, time;
+
+  if (has('website') && (stage==='idea' || has('setup'))) {
+    title = 'Start with a Launch Foundation.';
+    lead = "You need people to find you and trust you — everything else builds on that. We'd get your presence live first, then layer on the rest as you grow.";
+    list = ['A custom website designed around your offer','Business email, domain, and contact forms','Copywriting so visitors understand you in seconds','A booking or enquiry flow that actually works'];
+    price = 'From $950'; time = 'Typically 2–4 weeks from kickoff';
+  } else if (has('website') && stage==='established') {
+    title = 'A refresh, not a rebuild.';
+    lead = "Your business has outgrown its website. We'd modernise the presence while keeping everything that already works — and make sure it earns trust on first glance.";
+    list = ['Full redesign in your refreshed brand','Rewritten pages focused on conversion','Faster load times and mobile-first layout','Analytics so you can see what changes'];
+    price = 'From $2,400'; time = 'Typically 3–5 weeks from kickoff';
+  } else if (has('automation') || pain==='time' || pain==='chaos') {
+    title = 'Let\u2019s take the repetitive work off your plate.';
+    lead = "Your time is the bottleneck, not your effort. We'd map where the hours actually go, then automate the parts that never needed you in the first place.";
+    list = ['A short audit of where your week disappears','Automated follow-ups, bookings, and reminders','A CRM configured around how you actually sell','Documented processes you can hand to someone else'];
+    price = 'From $450 (audit) · $1,800 (build)'; time = 'Audit in 1 week · build in 2–4';
+  } else if (has('leads') || pain==='pipeline') {
+    title = 'Fill the pipeline first.';
+    lead = "Quiet months usually aren't a marketing problem — they're a targeting problem. We'd find the right people to talk to, then give you somewhere convincing to send them.";
+    list = ['Researched list of decision-makers who fit your business','Verified contact details, ready for outreach','A landing page built to convert that traffic','Follow-up sequences so nobody slips away'];
+    price = 'From $650'; time = 'Typically 1–2 weeks';
+  } else if (has('design') || pain==='trust') {
+    title = 'Make everything look like one business.';
+    lead = "When your materials don't match, people quietly assume you're smaller than you are. We'd build one visual system and apply it everywhere you show up.";
+    list = ['A consistent visual system: colour, type, layout','Canva templates you can reuse forever','Social graphics, decks, and business documents','Brand assets sized for every platform'];
+    price = 'From $350'; time = 'Typically 1–2 weeks';
+  } else {
+    title = 'Start with the foundation.';
+    lead = "Based on your answers, a solid digital presence is the highest-leverage first move — it makes every other channel work harder.";
+    list = ['A custom website designed around your offer','Consistent brand assets across every platform','Business email, domain, and enquiry forms','A clear plan for what comes next'];
+    price = 'From $950'; time = 'Typically 2–4 weeks from kickoff';
+  }
+
+  if (answers.when === 'asap') lead += ' Since this is urgent, we can usually start within a week.';
+
+  document.getElementById('r-title').textContent = title;
+  document.getElementById('r-lead').textContent = lead;
+  document.getElementById('r-price').textContent = price;
+  document.getElementById('r-time').textContent = time;
+  document.getElementById('r-list').innerHTML = list.map(i=>`
+    <li class="flex items-start gap-3 text-sm text-ink-soft">
+      <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-bronze"></span>${i}
+    </li>`).join('');
+}
+
+// Finish
+document.getElementById('finish').addEventListener('click',()=>{
+  const nm=document.getElementById('f-name'), em=document.getElementById('f-email'), bz=document.getElementById('f-biz');
+  let ok=true;
+  const err=(el,box,msg)=>{ if(msg){box.textContent=msg;box.classList.remove('hidden');el.style.borderColor='#B8935A';ok=false}
+                            else{box.classList.add('hidden');el.style.borderColor=''} };
+  err(nm,document.getElementById('e-name'), nm.value.trim()?'':'Please add your name.');
+  err(em,document.getElementById('e-email'), /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em.value)?'':'Enter a valid email so we can reply.');
+  if(!ok) return;
+
+  answers.name=nm.value.trim(); answers.email=em.value.trim(); answers.business=bz.value.trim();
+
+  // TODO: send `answers` to your webhook / Supabase / email service here.
+  console.log('FUNNEL LEAD →', answers);
+
+  recommend();
+  go(6);
+  document.getElementById('r-title').insertAdjacentHTML('beforebegin',
+    `<p class="mt-1 text-sm text-ink-soft">Thanks, ${answers.name.split(' ')[0]} — here's what we'd suggest.</p>`);
+});
+</script>
+</body>
+</html>
