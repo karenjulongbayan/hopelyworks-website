@@ -1003,6 +1003,7 @@ tailwind.config = {
           </div>
 
           <!-- Cloudflare Turnstile mounts here once TURNSTILE_SITE_KEY is set.
+           
                Until then this stays empty and the form behaves exactly as before. -->
           <div id="cf-slot"></div>
 
@@ -1115,7 +1116,7 @@ tailwind.config = {
   // The matching SECRET key goes in Apps Script:
   //   Project Settings → Script Properties → TURNSTILE_SECRET_KEY
   // Leave this empty and the form keeps working with no verification step.
-  const TURNSTILE_SITE_KEY = '';
+  const TURNSTILE_SITE_KEY = '0x4AAAAAAEc92JrVENjVZRWM';
 
   if (TURNSTILE_SITE_KEY) {
     const slot = document.getElementById('cf-slot');
