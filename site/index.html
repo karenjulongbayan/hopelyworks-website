@@ -110,6 +110,8 @@ tailwind.config = {
     color:#5C5C58;cursor:pointer;transition:all .3s cubic-bezier(.22,1,.36,1)}
   .need-pill:hover{border-color:#CFB68C;transform:translateY(-1px)}
   .need-pill.on{background:#22352F;border-color:#22352F;color:#F8F5F0}
+  /* Honeypot: off-screen for people, visible to form-filling bots. */
+  .hp-field{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
   .field{width:100%;border:1px solid #E3DDD2;background:#fff;border-radius:.75rem;padding:.8rem 1rem;
     font-size:.92rem;color:#2B2B2B;transition:border-color .3s,box-shadow .3s;font-family:inherit}
   .field::placeholder{color:#8A8880}
@@ -993,6 +995,17 @@ tailwind.config = {
             <input id="i-site" class="field" placeholder="yourbusiness.com or facebook.com/yourbusiness" />
           </div>
 
+          <!-- Bot trap. A human never sees this; a bot fills it, and the
+               server then silently discards the submission. -->
+          <div class="hp-field" aria-hidden="true">
+            <label for="i-company">Company</label>
+            <input id="i-company" name="company" type="text" tabindex="-1" autocomplete="off" />
+          </div>
+
+          <!-- Cloudflare Turnstile mounts here once TURNSTILE_SITE_KEY is set.
+               Until then this stays empty and the form behaves exactly as before. -->
+          <div id="cf-slot"></div>
+
           <button id="i-send" class="btn-lift mag mt-8 w-full rounded-full bg-forest px-8 py-4 text-sm font-semibold tracking-wide text-ivory">
             Book my discovery call
           </button>
@@ -1093,6 +1106,36 @@ tailwind.config = {
   };
   multi('needs', 'needs'); single('timing', 'timing'); single('budget', 'budget');
 
+  // Escape before any interpolation into innerHTML.
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // ═════ BOT PROTECTION (Cloudflare Turnstile) ═════
+  // Paste the Turnstile SITE key below. It is public and safe in source.
+  // The matching SECRET key goes in Apps Script:
+  //   Project Settings → Script Properties → TURNSTILE_SECRET_KEY
+  // Leave this empty and the form keeps working with no verification step.
+  const TURNSTILE_SITE_KEY = '';
+
+  if (TURNSTILE_SITE_KEY) {
+    const slot = document.getElementById('cf-slot');
+    if (slot) {
+      slot.className = 'mt-5';
+      const widget = document.createElement('div');
+      widget.className = 'cf-turnstile';
+      widget.setAttribute('data-sitekey', TURNSTILE_SITE_KEY);
+      widget.setAttribute('data-theme', 'light');
+      // Invisible for normal visitors; the checkbox appears only when
+      // Cloudflare actually wants a human check.
+      widget.setAttribute('data-appearance', 'interaction-only');
+      slot.appendChild(widget);
+      const s = document.createElement('script');
+      s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+      s.async = true; s.defer = true;
+      document.head.appendChild(s);
+    }
+  }
+
   const sendBtn = document.getElementById('i-send');
   if (sendBtn) {
     const flag = (el, box, msg) => {
@@ -1120,6 +1163,17 @@ tailwind.config = {
       // 4. Paste the /exec URL below.
       const SHEET_URL = 'https://script.google.com/macros/s/AKfycby85u-2QAwG4R7FAc9Y5gK6wehKmSVYLIfSzE01dr1o5JMmKJH91prXwrAZBYJff6Pn/exec';
 
+      // Bot signals travel with the payload: the honeypot value and the Turnstile
+      // token. Both are verified server-side; nothing here is trusted.
+      const hp = document.getElementById('i-company');
+      const cfInput = document.querySelector('[name="cf-turnstile-response"]');
+      const cfToken = cfInput ? cfInput.value : '';
+      if (TURNSTILE_SITE_KEY && !cfToken) {
+        flag(null, document.getElementById('e-email'),
+          'Please complete the verification just above, then try again.');
+        return;
+      }
+
       sendBtn.disabled = true;
       sendBtn.textContent = 'Sending…';
 
@@ -1131,7 +1185,9 @@ tailwind.config = {
         timing: lead.timing,
         budget: lead.budget,
         site: lead.site,
-        source: 'hopelyworks.com'
+        source: 'hopelyworks.com',
+        company: hp ? hp.value : '',
+        turnstileToken: cfToken
       };
 
       const mailFallback = () => {
@@ -1158,7 +1214,11 @@ tailwind.config = {
           body: JSON.stringify(payload)
         })
         .then(() => showThanks())
-        .catch(() => { mailFallback(); showThanks(); });
+        .catch(() => { mailFallback(); showThanks(); })
+        .finally(() => {
+          // One token per submission - reset so a retry gets a fresh one.
+          if (window.turnstile) { try { window.turnstile.reset(); } catch (e) {} }
+        });
       } else {
         // Endpoint not configured yet — fall back to email so nothing is lost
         mailFallback();
@@ -1172,7 +1232,7 @@ tailwind.config = {
             <svg class="h-7 w-7 text-bronze-soft" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17.5 19 7"/></svg>
           </span>
-          <h3 class="mt-6 font-display text-3xl font-medium text-forest">Thank you, ${lead.name.split(' ')[0]}.</h3>
+          <h3 class="mt-6 font-display text-3xl font-medium text-forest">Thank you, ${esc(lead.name.split(' ')[0])}.</h3>
           <p class="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-ink-soft">
             Your details are with us. We read every enquiry personally and reply within
             one business day with a clear next step.

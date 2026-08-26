@@ -300,6 +300,10 @@ function recommend(){
     </li>`).join('');
 }
 
+  // Escape before any interpolation into innerHTML.
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 // Finish
 document.getElementById('finish').addEventListener('click',()=>{
   const nm=document.getElementById('f-name'), em=document.getElementById('f-email'), bz=document.getElementById('f-biz');
@@ -313,12 +317,14 @@ document.getElementById('finish').addEventListener('click',()=>{
   answers.name=nm.value.trim(); answers.email=em.value.trim(); answers.business=bz.value.trim();
 
   // TODO: send `answers` to your webhook / Supabase / email service here.
-  console.log('FUNNEL LEAD →', answers);
+  // NOTE: this funnel does not deliver leads anywhere yet - see SECURITY.md.
+  // The previous console.log of the full lead object was removed: it wrote the
+  // visitor's name, email and business details into the browser console.
 
   recommend();
   go(6);
   document.getElementById('r-title').insertAdjacentHTML('beforebegin',
-    `<p class="mt-1 text-sm text-ink-soft">Thanks, ${answers.name.split(' ')[0]} — here's what we'd suggest.</p>`);
+    `<p class="mt-1 text-sm text-ink-soft">Thanks, ${esc(answers.name.split(' ')[0])} — here's what we'd suggest.</p>`);
 });
 </script>
 </body>

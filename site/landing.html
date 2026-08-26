@@ -329,6 +329,10 @@ tailwind.config = {
     p.classList.add('on'); choice = p.textContent.trim();
   }));
 
+  // Escape before any interpolation into innerHTML.
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
   // Validation + submit
   const show = (input, msg) => {
     const el = input.parentElement.querySelector('.err');
@@ -350,7 +354,7 @@ tailwind.config = {
         <span class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-forest">
           <svg class="h-6 w-6 text-bronze-soft" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17.5 19 7"/></svg>
         </span>
-        <h2 class="mt-5 font-display text-2xl font-medium text-forest">Thank you, ${n.value.split(' ')[0]}.</h2>
+        <h2 class="mt-5 font-display text-2xl font-medium text-forest">Thank you, ${esc(n.value.split(' ')[0])}.</h2>
         <p class="mx-auto mt-2 max-w-xs text-sm text-ink-soft">We've got your details and we'll reply within one business day with a clear quote and timeline.</p>
         <p class="mt-5 text-xs text-ink-faint">In the meantime, our recent work is just below.</p>
       </div>`;
